@@ -98,6 +98,11 @@ its own. Confirmed on firmware 1.8 (2026-10-08):
 | `APP&SK&<key B>` | `MCU&SK&ERR`, then disconnect |
 | `APP&SK&<key A>` | `MCU&SK&OK` |
 
+About a second after it takes its first key, the device drops that
+connection (the link times out); the next connection with the new key works.
+The vendor app's first connection to a reset device ends the same way, after
+which it reconnects. So after pairing, reconnect before sending anything else.
+
 The hardware reset is the one the vendor documents: triple-click the side
 button (the LED blinks red), then press and hold it until the red blinking
 stops; the LED then pulses blue. A "reset" that leaves the key in place

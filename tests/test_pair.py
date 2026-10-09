@@ -2,7 +2,8 @@
 
 FakePocket models what a firmware 1.8 device did after a hardware reset: it
 answers MCU&SK&OK (and MCU&WIFIO) to the first key it is sent, keeps that key,
-and answers MCU&SK&ERR to every other key, then drops the connection.
+and drops that connection about a second later; every other key gets
+MCU&SK&ERR and a disconnect.
 """
 
 import pytest
@@ -65,10 +66,18 @@ class FakePocket:
         self.answers = answers  # False: never replies
         self.sent = []
         self.time_set = False
+        self.connections = 0
+        self.dropped = False
 
     def __call__(self, address):
         self.address = address
+        self.connections += 1
+        self.dropped = False
         return self
+
+    def _alive(self):
+        if self.dropped:
+            raise OSError("Service Discovery has not been performed yet")
 
     async def __aenter__(self):
         return self
@@ -80,17 +89,26 @@ class FakePocket:
         self.sent.append(key)
         if not self.answers:
             return None
+        self._alive()
         if self.key is None:
             self.key = key
+            self.dropped = True  # the device drops the link right after pairing
+            return True
         return key == self.key
 
+    async def authenticate(self, key):
+        return await self.login(key) is True
+
     async def get_battery(self):
+        self._alive()
         return 95
 
     async def get_firmware(self):
+        self._alive()
         return "1.8"
 
     async def set_time(self, when=None):
+        self._alive()
         self.time_set = True
         return True
 
@@ -104,6 +122,7 @@ def config_home(tmp_path, monkeypatch):
 
 def _pair(monkeypatch, device, *args, found=(ADDRESS,), input=None):
     monkeypatch.setattr(cli_module, "PocketCommander", device)
+    monkeypatch.setattr(cli_module, "PAIR_RECONNECT_DELAY", 0)
 
     async def scan(timeout=5.0):
         return [(f"PKT01_BLUE_{i}", a) for i, a in enumerate(found)]
@@ -116,6 +135,8 @@ def test_pairs_a_reset_device_with_a_new_key_and_saves_it(monkeypatch, config_ho
     device = FakePocket()
     result = _pair(monkeypatch, device)
     assert result.exit_code == 0, result.output
+    assert device.connections == 2  # paired, then reconnected with the new key
+    assert "Battery" in result.output
     saved = cfg.load_config()["device"]
     assert saved["address"] == ADDRESS
     assert len(saved["session_key"]) == 16
@@ -207,15 +228,18 @@ def test_several_pockets_in_range_need_an_address(monkeypatch, config_home):
     assert device.sent == []
 
 
-def test_an_error_after_the_device_took_the_key_keeps_it(monkeypatch, config_home):
-    class ClockFails(FakePocket):
-        async def set_time(self, when=None):
-            raise OSError("link lost")
+def test_a_failed_check_after_pairing_still_reports_the_pairing(monkeypatch, config_home):
+    """MCU&SK&OK is the pairing; the check on a second connection is a bonus."""
+    class Unreachable(FakePocket):
+        async def __aenter__(self):
+            if self.connections > 1:
+                raise OSError("Device not found")
+            return self
 
-    device = ClockFails()
+    device = Unreachable()
     result = _pair(monkeypatch, device)
-    assert result.exit_code == 1
-    assert device.key is not None
+    assert result.exit_code == 0, result.output
+    assert "Paired" in result.output and "pocket-libre status" in " ".join(result.output.split())
     assert cfg.load_config()["device"]["session_key"] == device.key
 
 

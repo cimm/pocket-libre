@@ -413,6 +413,10 @@ def status(ctx, address: str | None, session_key: str | None):
     asyncio.run(_run())
 
 
+# After pairing, the wait before each of the three tries to reconnect.
+PAIR_RECONNECT_DELAY = 2.0
+
+
 async def _scan_pockets(timeout: float = 5.0) -> list[tuple[str, str]]:
     """(name, address) of every likely Pocket in range."""
     from bleak import BleakScanner
@@ -488,36 +492,58 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
 
     state = {"sent": False, "paired": None}
 
-    async def _run() -> bool | None:
+    async def _pair() -> bool | None:
         async with PocketCommander(address) as cmd:
             state["sent"] = True
-            paired = state["paired"] = await cmd.login(key)
-            if paired:
-                await cmd.set_time()
-                battery, firmware = await cmd.get_battery(), await cmd.get_firmware()
-                console.print(Panel(
-                    f"[bold]Paired[/bold] {address}\n"
-                    f"[bold]Battery:[/bold] {battery}%   [bold]Firmware:[/bold] {firmware}\n"
-                    f"The session key is saved in {cfg.CONFIG_FILE}.",
-                    title="Pocket paired", border_style="green",
-                ))
-            return paired
+            state["paired"] = await cmd.login(key)
+            return state["paired"]
+
+    async def _check() -> tuple[int, str] | None:
+        # The device drops the connection about a second after it takes its
+        # first key (the vendor app's first connection times out the same way),
+        # so the clock and a check go over a new connection with the new key.
+        for _ in range(3):
+            await asyncio.sleep(PAIR_RECONNECT_DELAY)
+            try:
+                async with PocketCommander(address) as cmd:
+                    if await cmd.authenticate(key):
+                        await cmd.set_time()
+                        return await cmd.get_battery(), await cmd.get_firmware()
+            except Exception:
+                pass
+        return None
 
     try:
-        paired = asyncio.run(_run())
+        paired = asyncio.run(_pair())
     except Exception as e:
         if not state["sent"]:
             restore()
             console.print(f"[red]Could not connect to {address}: {e}[/red] The config is "
                           "unchanged.")
         elif state["paired"]:
-            console.print(f"[yellow]Paired, but then: {e}[/yellow] The new key is saved; "
-                          "check with `pocket-libre status`.")
+            paired = True
         else:
             console.print(f"[red]The connection failed during pairing: {e}[/red] The device "
                           "may have taken the key, so it stays in the config: check with "
                           "`pocket-libre status`.")
-        raise SystemExit(1) from None
+        if not state["paired"]:
+            raise SystemExit(1) from None
+    if paired:
+        checked = asyncio.run(_check())
+        if checked:
+            battery, firmware = checked
+            console.print(Panel(
+                f"[bold]Paired[/bold] {address}\n"
+                f"[bold]Battery:[/bold] {battery}%   [bold]Firmware:[/bold] {firmware}\n"
+                f"The session key is saved in {cfg.CONFIG_FILE}.",
+                title="Pocket paired", border_style="green",
+            ))
+        else:
+            console.print(f"[green]Paired[/green] {address}; the session key is saved in "
+                          f"{cfg.CONFIG_FILE}. The device did not take a second connection "
+                          "yet (it drops the first one after pairing); check with "
+                          "`pocket-libre status`.")
+        return
     if paired is False:
         restore()
         console.print("[red]This Pocket already has a session key[/red] and refused the "
