@@ -163,11 +163,26 @@ pocket-libre list                   # What's on the device
 pocket-libre sync                   # Download + transcribe + summarize everything new
 pocket-libre watch                  # Same, but automatically whenever the device appears
 pocket-libre process --input x.mp3  # Process an audio file you already have
+pocket-libre delete --downloaded    # Free up space: remove what's safely downloaded
 ```
 
 Leave `watch` running and recordings sync themselves whenever the Pocket comes
 in range. It backs off to five-minute checks while the device is away, so it
 isn't scanning flat out all day.
+
+### Freeing up space on the device
+
+`pocket-libre delete --downloaded` removes from the device every recording that
+has a complete copy on your disk, and keeps everything else. Deleting can't be
+undone, so "complete" is strict: the copy must be exactly the size the device
+announced when it was downloaded, and the device must still list the recording
+with the same length. Copies from older versions of pocket-libre, or from the
+web UI, don't count and are kept. It lists what it will delete and asks first
+(`--yes` skips the question).
+
+`sync`, `download-all` and `wifi-transfer` take `--delete-after` to do the same
+once they finish. To delete one recording, use
+`pocket-libre delete --date 2026-10-03 --timestamp 20261003143216`.
 
 ## All commands
 
@@ -335,8 +350,8 @@ close the vendor app. Partial files are never left behind under the final
 name.
 
 **Transcription is slow or runs out of memory.** Whisper model size is the
-lever: `pocket-libre config --set transcribe.model=base` is much lighter than
-`large`. Diarization needs PyTorch and a HuggingFace token; without them the
+lever: `pocket-libre config --set defaults.whisper_model=base.en` is much
+lighter than `large`. Diarization needs PyTorch and a HuggingFace token; without them the
 pipeline falls back to a heuristic speaker split.
 
 **Something else.** Open an issue with the output of `pocket-libre status` and
@@ -359,6 +374,9 @@ device's WiFi password.
 - [x] WiFi transfer socket (TCP 8475) and stream format decoded (firmware 1.8)
 - [x] WiFi transfer confirmed on firmware 1.7 (one file per access-point session)
 - [x] `wifi-transfer` over WiFi, with automatic join on Linux and Windows
+- [x] Deleting recordings from the device, only when a verified copy is on disk
+- [x] USB mass storage mode on and off (`usb`)
+- [ ] Copying recordings over USB once the device is in mass storage mode
 - [ ] Several files over one WiFi connection
 - [ ] WiFi transfer on other firmware
 
@@ -366,7 +384,7 @@ device's WiFi password.
 
 Pull requests welcome. The things that would help most right now:
 
-1. **Try `wifi-transfer` on other firmware** (anything but 1.8, with
+1. **Try `wifi-transfer` on other firmware** (anything but 1.7 and 1.8, with
    `--force`) and report what happens: `pocket-libre status` output, and
    whether the AP came up and the files arrived.
 2. **Test on other firmware.** Run `pocket-libre explore` and share the output.
