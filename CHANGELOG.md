@@ -6,10 +6,41 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-10-12
+
 WiFi transfer works on firmware 1.7 and 1.8. It was decoded from the vendor
 app's Android HCI snoop log during a real "Quick Transfer", reproduced from a
 Linux laptop, and verified byte for byte against BLE downloads. A field report
-confirmed it on 1.7.
+confirmed it on 1.7. A Pocket can also be paired without the vendor app
+(`pair`), and recordings can be deleted from the device once they are safely
+downloaded (`delete`, `--delete-after`).
+
+### Contributors
+
+Thank you to everyone who made this release:
+
+- [@shageman](https://github.com/shageman) (Stephan Hagemann): `pair`
+  ([#33](https://github.com/shahcolate/pocket-libre/pull/33)), `delete`
+  ([#15](https://github.com/shahcolate/pocket-libre/pull/15)), the device clock
+  in UTC ([#26](https://github.com/shahcolate/pocket-libre/pull/26),
+  [#29](https://github.com/shahcolate/pocket-libre/pull/29)), WiFi transfer
+  retries ([#25](https://github.com/shahcolate/pocket-libre/pull/25)),
+  `download-all` counts ([#27](https://github.com/shahcolate/pocket-libre/pull/27)),
+  the BLE disconnect fix ([#10](https://github.com/shahcolate/pocket-libre/pull/10)),
+  the vendor app's iOS trace in PROTOCOL.md
+  ([#34](https://github.com/shahcolate/pocket-libre/pull/34)), and the storage
+  report ([#11](https://github.com/shahcolate/pocket-libre/issues/11)).
+- [@michaelkleinhenz](https://github.com/michaelkleinhenz) (Michael Kleinhenz):
+  WiFi transfer on firmware 1.7 and 1.8
+  ([#9](https://github.com/shahcolate/pocket-libre/pull/9)), USB mass storage
+  control ([#8](https://github.com/shahcolate/pocket-libre/pull/8)), and the
+  firmware 1.8 and activation reports
+  ([#7](https://github.com/shahcolate/pocket-libre/issues/7),
+  [#14](https://github.com/shahcolate/pocket-libre/issues/14)).
+- [@SeiferVIII](https://github.com/SeiferVIII) (Oleksandr Moccogni): the
+  `config` section headings
+  ([#21](https://github.com/shahcolate/pocket-libre/pull/21)) and the Windows
+  test report ([#24](https://github.com/shahcolate/pocket-libre/issues/24)).
 
 ### Added
 
@@ -128,6 +159,9 @@ confirmed it on 1.7.
 
 ### Fixed
 
+- **`config` printed no section headings.** Rich read `[device]` as a style
+  tag and dropped it, so every value appeared under no heading
+  ([#21](https://github.com/shahcolate/pocket-libre/pull/21)).
 - **`wifi-transfer` recovers from two failures seen on firmware 1.8.** When
   the device resets or closes a transfer connection before sending any of the
   file, the file is tried once more on a fresh access point; any other failure
@@ -184,6 +218,16 @@ confirmed it on 1.7.
   failed** and retried, instead of being kept. Previously `sync` and
   `watch` only rejected transfers under half the size estimated from
   duration, and `download` checked nothing.
+
+### Breaking
+
+- `get_storage()` returns MB instead of KB, and the web API's
+  `storage_used_kb` / `storage_total_kb` are now `storage_used_mb` /
+  `storage_total_mb`.
+- `set_time()` takes a `datetime` instead of a string, and sends UTC.
+- `wifi-transfer --url`, the `wifi.url_template` setting,
+  `wifi.download_file()`, `wifi.build_url()` and `WIFI_STATUS_CONNECTING` are
+  gone.
 
 ## [1.1.0] — 2026-09-19
 
@@ -333,5 +377,7 @@ All of the below were found in a pre-release audit of `0.1.0`. See
   single-user tool; keep it on loopback.
 - Verified against one device: `PKT01`, firmware 1.3.3.
 
-[Unreleased]: https://github.com/shahcolate/pocket-libre/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/shahcolate/pocket-libre/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/shahcolate/pocket-libre/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/shahcolate/pocket-libre/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/shahcolate/pocket-libre/releases/tag/v1.0.0
