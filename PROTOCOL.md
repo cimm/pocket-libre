@@ -297,7 +297,8 @@ trace, the vendor app's connection right after its first one stopped getting
 replies part way through (`APP&FW` unanswered) and ended in a link
 supervision timeout (disconnect reason `0x08`); the app reconnected, and the
 device answered normally. (The first connection, which paired the device,
-ended the same way; a device drops the connection right after it is paired.)
+ended the same way; a device drops the connection right after it is paired,
+see [Session Authentication](#session-authentication).)
 
 ### WiFi Transfer (Fast) — decoded on firmware 1.8
 
