@@ -3,7 +3,6 @@
 import asyncio
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -405,7 +404,7 @@ async def process_recording(date: str, timestamp: str):
         if anthropic_key:
             yield _sse({"step": "summarize", "message": "Summarizing with Claude..."})
             try:
-                from pocket_libre.summarize import summarize_transcript
+                from pocket_libre.summarize import summarize_transcript, summary_stamp
                 summary = await loop.run_in_executor(
                     None,
                     lambda: summarize_transcript(
@@ -416,7 +415,7 @@ async def process_recording(date: str, timestamp: str):
                 )
                 if summary:
                     summary_path = rec_dir / f"{timestamp}_summary.md"
-                    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    ts = summary_stamp()
                     full_doc = f"# {timestamp} ({ts})\n\n{summary}\n\n---\n\n## Full Transcript\n\n{transcript_text}"
                     summary_path.write_text(full_doc, encoding="utf-8")
                     yield _sse({"step": "summarize", "message": "Summary saved"})
@@ -565,7 +564,7 @@ async def sync_all():
             if anthropic_key:
                 yield _sse({"step": "summarize", "recording": i, "total": total, "message": "Summarizing..."})
                 try:
-                    from pocket_libre.summarize import summarize_transcript
+                    from pocket_libre.summarize import summarize_transcript, summary_stamp
                     summary = await loop.run_in_executor(
                         None,
                         lambda t=transcript_text: summarize_transcript(
@@ -574,7 +573,7 @@ async def sync_all():
                     )
                     if summary:
                         summary_path = rec_dir / f"{rec.timestamp}_summary.md"
-                        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        ts = summary_stamp()
                         full_doc = f"# {rec.timestamp} ({ts})\n\n{summary}\n\n---\n\n## Full Transcript\n\n{transcript_text}"
                         summary_path.write_text(full_doc, encoding="utf-8")
                         yield _sse({"step": "summarize", "recording": i, "total": total, "message": "Done"})

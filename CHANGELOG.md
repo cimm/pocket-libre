@@ -84,6 +84,10 @@ confirmed it on 1.7.
 
 ### Changed
 
+- **Summary headers show the UTC offset.** The time a summary was written is
+  still local, but now reads e.g. `2026-10-06 17:05 -06:00`, so it can be
+  compared with recording names, which are UTC
+  ([#28](https://github.com/shahcolate/pocket-libre/issues/28)).
 - **WiFi status codes were mislabelled.** `MCU&WIFIS&3` is "AP coming up" and
   `2` is "waiting for a client", not the other way round. `1` means a client
   has joined. `WIFI_STATUS_STARTING` is now 3, and `WIFI_STATUS_WAITING_FOR_CLIENT`
