@@ -427,6 +427,25 @@ async def _scan_pockets(timeout: float = 5.0) -> list[tuple[str, str]]:
     return [(d.name, d.address) for d, _adv in found.values() if is_likely_pocket(d.name)]
 
 
+def _write_backup(path: Path, text: str) -> Path:
+    """Write text to a new path.<date-time>.bak next to path, owner-only from
+    the start (it holds the session key and API keys); never overwrite one."""
+    from datetime import datetime
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    for n in range(1, 100):
+        suffix = stamp if n == 1 else f"{stamp}-{n}"
+        backup = path.with_name(f"{path.name}.{suffix}.bak")
+        try:
+            fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            continue
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        return backup
+    raise FileExistsError(f"too many backups of {path} named {stamp}")
+
+
 @cli.command()
 @click.option("--address", default=None,
               help="BLE address of the Pocket (default: the one Pocket in range).")
@@ -473,24 +492,15 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
     config = ctx.obj["config"]
     device = config.get("device", {}) if isinstance(config.get("device"), dict) else {}
     if (device.get("session_key") or device.get("address")) and not assume_yes:
+        replaced = "and its session key " if device.get("session_key") else ""
         click.confirm(f"This replaces the configured device ({device.get('address') or 'no address'}) "
-                      "and its session key in the config. Continue?", abort=True)
+                      f"{replaced}in the config. Continue?", abort=True)
 
     # The previous config goes to a backup first: its key may be the only copy
     # of one the device still expects. Each run gets its own backup, so a
     # second run can't overwrite the first one's.
-    from datetime import datetime
-
     previous = cfg.CONFIG_FILE.read_text(encoding="utf-8") if cfg.CONFIG_FILE.exists() else None
-    backup = None
-    if previous is not None:
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        backup = cfg.CONFIG_FILE.with_name(f"{cfg.CONFIG_FILE.name}.{stamp}.bak")
-        backup.write_text(previous, encoding="utf-8")
-        try:
-            backup.chmod(0o600)
-        except OSError:
-            pass
+    backup = _write_backup(cfg.CONFIG_FILE, previous) if previous is not None else None
     kept = f" The previous config is in {backup}." if backup else ""
 
     # Saved before it is sent: once the device takes the key, it refuses any
@@ -523,20 +533,30 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
         # False: the device refused the key it had just taken.
         for _ in range(3):
             await asyncio.sleep(PAIR_RECONNECT_DELAY)
+            result = None
             try:
                 async with PocketCommander(address) as cmd:
                     accepted = await cmd.login(key)
                     if accepted is False:
-                        return False
-                    if accepted:
+                        result = False
+                    elif accepted:
                         await cmd.set_time()
-                        return await cmd.get_battery(), await cmd.get_firmware()
+                        result = await cmd.get_battery(), await cmd.get_firmware()
             except Exception:
+                # Closing a connection the device has dropped can raise (it
+                # drops it right after MCU&SK&ERR); an answer already given stands.
                 pass
+            if result is not None:
+                return result
         return None
 
     try:
         paired = asyncio.run(_pair())
+    except KeyboardInterrupt:
+        # Once the key has gone out the device may have taken it, so it stays.
+        if not state["sent"]:
+            restore()
+        raise
     except Exception as e:
         if not state["sent"]:
             restore()

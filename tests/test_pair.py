@@ -293,23 +293,22 @@ def test_each_run_keeps_its_own_backup(monkeypatch, config_home):
     """A second run must not overwrite the backup holding the original key."""
     cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
     old = config_home.read_text()
-    stamps = iter(["20261012-100000", "20261012-100005"])
 
-    class Clock:
+    class Clock:  # both runs in the same second
         @staticmethod
         def now():
             class Stamp:
                 def strftime(self, fmt):
-                    return next(stamps)
+                    return "20261012-100000"
             return Stamp()
 
     import datetime
     monkeypatch.setattr(datetime, "datetime", Clock)
     _pair(monkeypatch, FakePocket(answers=False), "--yes")
     _pair(monkeypatch, FakePocket(answers=False), "--yes")
-    backups = sorted(config_home.parent.glob("config.toml.*.bak"))
-    assert len(backups) == 2
-    assert backups[0].read_text() == old
+    first = config_home.parent / "config.toml.20261012-100000.bak"
+    assert first.read_text() == old
+    assert len(list(config_home.parent.glob("config.toml.*.bak"))) == 2
 
 
 def test_a_successful_pairing_names_the_backup(monkeypatch, config_home):
@@ -345,5 +344,61 @@ def test_a_configured_address_without_a_key_asks_first(monkeypatch, config_home)
     device = FakePocket()
     result = _pair(monkeypatch, device, input="n\n")
     assert result.exit_code != 0
+    assert "session key" not in result.output  # there is none to replace
     assert device.sent == []
     assert cfg.load_config()["device"] == {"address": "OLD"}
+
+
+def test_a_refused_reconnect_with_a_failed_disconnect_is_still_a_failed_pairing(
+        monkeypatch, config_home):
+    """Closing the connection the device drops after MCU&SK&ERR can raise; that
+    must not turn the refusal into a retry and, after three, a green "Paired"."""
+    class ForgetsAndDrops(FakePocket):
+        refused = False
+
+        async def login(self, key):
+            if self.connections > 1:
+                self.sent.append(key)
+                self.refused = True
+                return False
+            return await super().login(key)
+
+        async def __aexit__(self, *exc):
+            if self.refused:
+                raise OSError("Not connected")
+            return False
+
+    device = ForgetsAndDrops()
+    result = _pair(monkeypatch, device)
+    assert result.exit_code == 1
+    assert "refused the new key when reconnecting" in " ".join(result.output.split())
+    assert device.connections == 2
+
+
+def test_the_backup_is_owner_only_from_the_start(monkeypatch, config_home):
+    """Not written, then chmod-ed: a failed chmod must not leave it readable."""
+    import pathlib
+
+    cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
+
+    def no_chmod(self, mode, **kwargs):
+        raise OSError("chmod not allowed")
+
+    monkeypatch.setattr(pathlib.Path, "chmod", no_chmod)
+    _pair(monkeypatch, FakePocket(answers=False), "--yes")
+    [backup] = config_home.parent.glob("config.toml.*.bak")
+    assert backup.stat().st_mode & 0o777 == 0o600
+
+
+def test_ctrl_c_before_the_key_is_sent_restores_the_config(monkeypatch, config_home):
+    cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
+
+    class Interrupted(FakePocket):
+        async def __aenter__(self):
+            raise KeyboardInterrupt
+
+    device = Interrupted()
+    _pair(monkeypatch, device, "--yes")
+    assert device.sent == []
+    assert cfg.load_config()["device"] == {"address": "OLD", "session_key": "OLDKEY0000000000"}
+    assert list(config_home.parent.glob("*.bak")) == []
