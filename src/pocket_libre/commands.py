@@ -70,8 +70,8 @@ class Recording:
     def sort_key(self) -> tuple[str, str]:
         """(date, start time as YYYYMMDDHHmmss), for oldest-first order.
 
-        PH + YYMMDDHHmmss names (phone calls) are compared by the time they
-        carry, not as text, which would put them after every other name.
+        PH + YYMMDDHHmmss names (possibly recordings made in the side switch's
+        CALL position; see PROTOCOL.md) are compared by the time they carry, not as text, which would put them after every other name.
         """
         ts = self.timestamp
         return self.date, "20" + ts[2:] if ts.startswith("PH") else ts

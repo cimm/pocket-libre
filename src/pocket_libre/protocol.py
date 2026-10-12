@@ -32,27 +32,30 @@ UART_BIDI_CHAR = "0000ffd3-0000-1000-8000-00805f9b34fb"  # Write, Write Without 
 
 
 # ──────────────────────────────────────────────
-# E49A3001: Custom service #1 (command channel)
-# Confirmed via PacketLogger: ATT handle 0x002b (write)
-# and 0x0030 (notify) carry the APP&/MCU& protocol.
+# E49A3001: Custom service #1
+# Not used by the vendor app on firmware 1.8 (handles 0x001f/0x0021 there).
+# The APP&/MCU& traffic on handles 0x002b/0x0030 belongs to 001120A2/001120A3
+# (see PROTOCOL.md, GATT Service Map).
 # ──────────────────────────────────────────────
 CUSTOM1_SERVICE = "e49a3001-f69a-11e8-8eb2-f2801f1b9fd1"
-CUSTOM1_WRITE_CHAR = "e49a3002-f69a-11e8-8eb2-f2801f1b9fd1"  # ATT handle 0x002b — APP& commands
-CUSTOM1_NOTIFY_CHAR = "e49a3003-f69a-11e8-8eb2-f2801f1b9fd1"  # ATT handle 0x0030 — MCU& responses
+CUSTOM1_WRITE_CHAR = "e49a3002-f69a-11e8-8eb2-f2801f1b9fd1"
+CUSTOM1_NOTIFY_CHAR = "e49a3003-f69a-11e8-8eb2-f2801f1b9fd1"
 
 
 # ──────────────────────────────────────────────
-# E49A25F8: Custom service #2 (audio data)
-# ATT handle 0x002d carries MP3 audio notifications.
+# E49A25F8: Custom service #2
+# Not used by the vendor app on firmware 1.8 (handles 0x0025/0x0027 there).
+# The MP3 audio on handle 0x002d belongs to 001120A1.
 # ──────────────────────────────────────────────
 CUSTOM2_SERVICE = "e49a25f8-f69a-11e8-8eb2-f2801f1b9fd1"
 CUSTOM2_WRITE_CHAR = "e49a25e0-f69a-11e8-8eb2-f2801f1b9fd1"
-CUSTOM2_NOTIFY_CHAR = "e49a28e1-f69a-11e8-8eb2-f2801f1b9fd1"  # ATT handle 0x002d
+CUSTOM2_NOTIFY_CHAR = "e49a28e1-f69a-11e8-8eb2-f2801f1b9fd1"
 
 
 # ──────────────────────────────────────────────
 # 001120A0: Primary service (confirmed via live testing)
-# Commands go to 001120A3, audio arrives on 001120A1.
+# Commands go to 001120A3, audio arrives on 001120A1. On firmware 1.8 the
+# value handles are 0x002b (A2), 0x002d (A1) and 0x0030 (A3).
 # ──────────────────────────────────────────────
 AUDIO_SERVICE = "001120a0-2233-4455-6677-889912345678"
 AUDIO_WRITE_CHAR = "001120a2-2233-4455-6677-889912345678"
@@ -147,14 +150,14 @@ ALL_NOTIFY_CHARS = [
 
 # Priority order for audio capture auto-detection
 AUDIO_CHAR_PRIORITY = [
-    AUDIO_NOTIFY_CHAR,   # Primary: confirmed MP3 data on handle 0x002d
-    AUDIO_DATA_CHAR,     # Secondary: 001120a1
+    AUDIO_NOTIFY_CHAR,   # Primary: MP3 data on 001120a1 (handle 0x002d on 1.8)
+    AUDIO_DATA_CHAR,     # the same characteristic (alias)
     UART_RX_CHAR,
 ]
 
 # All write characteristics (for command probing)
 ALL_WRITE_CHARS = [
-    CMD_WRITE_CHAR,      # Primary: APP& commands on handle 0x002b
+    CMD_WRITE_CHAR,      # Primary: APP& commands on 001120a3 (handle 0x0030 on 1.8)
     UART_TX_CHAR,
     UART_BIDI_CHAR,
     CUSTOM2_WRITE_CHAR,

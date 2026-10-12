@@ -3,9 +3,13 @@
 ## Protocol Overview
 
 The Pocket device uses a simple **ASCII text command protocol** over BLE GATT:
-- **App writes** `APP&<COMMAND>` to characteristic E49A3002 (ATT handle 0x002b)
-- **Device responds** `MCU&<RESPONSE>` via notifications on E49A3003 (ATT handle 0x0030)
-- **Audio data** streams as MP3 on E49A28E1 (ATT handle 0x002d)
+- **App writes** `APP&<COMMAND>` to a characteristic of the `001120A0` service:
+  the vendor app to `001120A2` (ATT handle 0x002b), pocket-libre to
+  `001120A3`; the device takes commands on both
+- **Device responds** `MCU&<RESPONSE>` via notifications on `001120A3` (ATT handle 0x0030)
+- **Audio data** streams as MP3 on `001120A1` (ATT handle 0x002d)
+
+Handles are from firmware 1.8; see the [GATT Service Map](#gatt-service-map).
 
 Decoded via PacketLogger HCI capture analysis.
 
@@ -29,26 +33,35 @@ is.
 
 ## GATT Service Map
 
-| Service | Characteristic | Handle | Properties | Purpose |
-|---------|---------------|--------|------------|---------|
-| E49A3001 | **E49A3002** | **0x002b** | Write | **Command channel** (APP& writes) |
-| E49A3001 | **E49A3003** | **0x0030** | Notify | **Response channel** (MCU& responses) |
-| E49A25F8 | **E49A28E1** | **0x002d** | Notify | **MP3 audio data stream** |
-| E49A25F8 | E49A25E0 | 0x0024 | Write | Unknown |
-| FFD0 | FFD1 | 0x0015 | Write | UART TX (unused by command protocol) |
-| FFD0 | FFD2 | 0x0017 | Notify | UART RX (status beacons) |
-| FFD0 | FFD3 | 0x001a | Write+Notify | UART BiDi (unused) |
-| 001120A0 | 001120A1 | 0x002c | Notify | Secondary audio (legacy?) |
-| 001120A0 | 001120A2 | 0x002a | Write | Unknown |
-| 001120A0 | 001120A3 | 0x002f | Write+Notify | Metadata |
+From the vendor app's own service discovery in an iOS HCI trace on firmware
+1.8 (2026-10-08). An Android HCI log of the vendor app on 1.8 shows the same
+handles for its traffic.
 
-> **Firmware 1.8 notes.** pocket-libre writes commands to `001120A3` and
-> receives `MCU&` replies there, and receives audio on `001120A1`; both work on
-> 1.8. The vendor app on 1.8 (Android HCI log) writes commands to handle
-> `0x002b`, gets replies on `0x0030` and audio on `0x002d`, after enabling
-> notifications through the CCCDs at `0x002e` and `0x0031`. The handles in the
-> table above are from 1.3.3; on 1.8 they differ (below).
->
+| Service | Characteristic | Value handle | Properties | Use |
+|---------|----------------|--------------|------------|-----|
+| 1801 | 2A05 (Service Changed) | 0x0003 | Indicate | The vendor app enables indications (CCCD `0x0004`) |
+| 180F | 2A19 (Battery Level) | 0x0012 | Read, Notify | Not used by the vendor app |
+| FFD0 | FFD1 | 0x0016 | Write | UART TX, unused |
+| FFD0 | FFD2 | 0x0018 | Notify | UART RX (status beacons); see below |
+| FFD0 | FFD3 | 0x001b | Write, Notify | UART BiDi, unused |
+| E49A3001 | E49A3002 / E49A3003 | 0x001f / 0x0021 | Write / Notify | Not used by the vendor app |
+| E49A25F8 | E49A25E0 / E49A28E1 | 0x0025 / 0x0027 | Write / Notify | Not used by the vendor app |
+| 001120A0 | **001120A2** | **0x002b** | Write | **Commands (`APP&…`)** from the vendor app |
+| 001120A0 | **001120A1** | **0x002d** | Notify | **MP3 audio** (CCCD `0x002e`) |
+| 001120A0 | **001120A3** | **0x0030** | Write without response, Notify | **Replies (`MCU&…`)** (CCCD `0x0031`); pocket-libre also writes its commands here |
+
+So the vendor app uses only the `001120A0` service; the `E49A…` services are
+present but unused.
+
+> **An earlier version of this table** (from work on firmware 1.3.3) put the
+> command, reply and audio traffic on `E49A3002` (0x002b), `E49A3003` (0x0030)
+> and `E49A28E1` (0x002d). Those three handles are exactly the 1.8 value
+> handles of `001120A2`, `001120A3` and `001120A1`, and the table's own
+> `001120A*` and `FFD*` handles were each one below their 1.8 value handles,
+> i.e. declaration handles. Most likely that table paired the handles with the
+> wrong UUIDs rather than 1.3.3 laying them out differently, but there is no
+> 1.3.3 trace to confirm it.
+
 > Don't subscribe to `FFD2` on 1.8: the subscription never completed and the
 > device dropped the connection.
 >
@@ -57,24 +70,6 @@ is.
 > 227-byte chunk. The phone's HCI log shows each notification once, so this is
 > on the receiving side. Deduplicate command replies; for audio, compare the
 > byte count with `MCU&U&<size>`.
-
-**GATT on firmware 1.8**, from the vendor app's own service discovery in an
-iOS HCI trace (2026-10-08):
-
-| Service | Characteristic | Value handle | Properties | Used by the vendor app |
-|---------|----------------|--------------|------------|------------------------|
-| 1801 | 2A05 (Service Changed) | 0x0003 | Indicate | indications on (CCCD `0x0004`) |
-| 180F | 2A19 (Battery Level) | 0x0012 | Read, Notify | — |
-| FFD0 | FFD1 / FFD2 / FFD3 | 0x0016 / 0x0018 / 0x001b | Write / Notify / Write+Notify | — |
-| E49A3001 | E49A3002 / E49A3003 | 0x001f / 0x0021 | Write / Notify | — |
-| E49A25F8 | E49A25E0 / E49A28E1 | 0x0025 / 0x0027 | Write / Notify | — |
-| 001120A0 | **001120A2** | **0x002b** | Write | **commands (`APP&…`)** |
-| 001120A0 | **001120A1** | **0x002d** | Notify | **audio** (CCCD `0x002e`) |
-| 001120A0 | **001120A3** | **0x0030** | Write without response, Notify | **replies (`MCU&…`)** (CCCD `0x0031`) |
-
-So on 1.8 the vendor app uses only the `001120A0` service: the Android
-handles above are the same characteristics. The `E49A…` services are present
-but unused.
 
 ## Command Reference
 
@@ -96,7 +91,7 @@ The 16-character session key authenticates the connection. Capture yours from an
 | `APP&SPACE` | `MCU&SPA&060846&061032` | Storage free & total (MB) |
 | `APP&STE` | `MCU&STE&0` | Device state (0=idle) |
 | `APP&T&YYYYMMDDHHmmss` | `MCU&T&OK` | Set device clock (the vendor app sends UTC) |
-| `APP&REC&SECEN` | `MCU&REC&CON` | Side-switch position: `CON` or `CALL` (see [Recording events](#recording-events)) |
+| `APP&REC&SECEN` | `MCU&REC&CON` | Probably the side-switch position (inferred: only `CON` seen; see [Recording events](#recording-events)) |
 | `APP&MAC` | `MCU&MAC&<12 hex digits>` | Device MAC |
 | `APP&GET&USB` | `MCU&USB&<0\|1>` | USB mass storage state; see [USB Mass Storage](#usb-mass-storage) |
 | `APP&WPING` | `MCU&WPING` | Heartbeat while the WiFi AP is up |
@@ -126,7 +121,7 @@ unsolicited on the reply characteristic while the app was connected:
 << MCU&REC&CON
 << MCU&STA&20261009032636          # a recording started; its name
    [the recording streams live on 001120A1, see below]
-<< MCU&STO                         # the recording stopped (8.5 s later)
+<< MCU&STO                         # the recording stopped (8.55 s after STA)
 >> APP&U&2026-10-09&20261009032636 # the app fetches it right away over BLE
 << MCU&U&32008
 << MCU&OFF
@@ -136,8 +131,10 @@ unsolicited on the reply characteristic while the app was connected:
 - `MCU&STA&<name>` arrives when a recording starts and carries the name it
   will be listed under; `MCU&STO` arrives when it stops. A client that stays
   connected can fetch a recording the moment it ends instead of polling `LIST`.
-- `MCU&REC&CALL` / `MCU&REC&CON` arrived as the side switch was moved, and
-  `APP&REC&SECEN` answers with the current position. `CON` is presumably
+- `MCU&REC&CALL` / `MCU&REC&CON` arrived as the side switch was moved.
+  **Inferred, not seen:** that `APP&REC&SECEN` answers with the current
+  position. It answered `MCU&REC&CON` twice, both times with the switch in the
+  `CON` position. `CON` is presumably
   "conversation" and `CALL` the phone-call position. **Unconfirmed guess:**
   recordings made in the `CALL` position may be the ones named `PH…` (see
   [Recording names](#file-listing)); a recording made in that position would
@@ -145,12 +142,18 @@ unsolicited on the reply characteristic while the app was connected:
 - What `APP&STO` does is unknown. It got no reply and nothing visible
   changed.
 
-**Live audio while recording.** As soon as `MCU&STA` arrived, the recording
+**Live audio while recording.** After `MCU&STA` arrived, the recording
 streamed on `001120A1` at 4000 bytes/s, as it was being made: 238
-notifications of 60–160 bytes (about 134 on average). The 32,008 bytes streamed during the
-recording were **byte for byte the file** the app then downloaded with
-`APP&U&` (`MCU&U&32008`). A connected, subscribed client therefore gets each
-recording without a download.
+notifications of 60–160 bytes (about 134 on average). The 32,008 bytes streamed
+during the recording were **byte for byte the file** the app then downloaded
+with `APP&U&` (`MCU&U&32008`). A connected, subscribed client therefore gets
+each recording without a download.
+
+The events don't line up exactly with the audio. The first audio notification
+came 0.54 s after `MCU&STA` and the last one just before `MCU&STO`, so the
+8.55 s between the events held 7.99 s of streamed audio, and 32,008 bytes is
+8.0 s at 4000 bytes/s. Take a recording's length from its size, not from the
+events.
 
 
 ### File Listing
@@ -259,15 +262,15 @@ the device sends `MCU&OFF` right away.
 Throughput: about 3–4 KB/s in the original 1.3.3 capture. On firmware 1.8,
 about 26 KB/s to a Linux laptop and about 65 KB/s to an Android phone. On
 firmware 1.7, about 53–56 KB/s to a Mac. To an iPhone (vendor app, 1.8), a
-32,008-byte recording took 0.47 s, about 67 KB/s.
+32,008-byte recording took 0.47 s, about 67 KB/s. WiFi transfer (below) runs
+at about 1 MB/s.
 
 New connections sometimes go silent during the opening queries. In the iOS
 trace, the vendor app's connection right after its first one stopped getting
 replies part way through (`APP&FW` unanswered) and ended in a link
 supervision timeout (disconnect reason `0x08`); the app reconnected, and the
 device answered normally. (The first connection, which paired the device,
-ended the same way; a device drops the connection right after it is paired.) WiFi
-transfer (below) runs at about 1 MB/s.
+ended the same way; a device drops the connection right after it is paired.)
 
 ### WiFi Transfer (Fast) — decoded on firmware 1.8
 
