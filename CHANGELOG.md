@@ -13,6 +13,14 @@ confirmed it on 1.7.
 
 ### Added
 
+- PROTOCOL.md documents what an iOS HCI trace of the vendor app showed on
+  firmware 1.8: the GATT handles (the app uses only the `001120A0` service;
+  the overview and the service map, which put that traffic on the `E49A…`
+  characteristics, now match),
+  the unsolicited recording events (`MCU&STA&<name>`, `MCU&STO`,
+  `MCU&REC&CALL`/`CON` for the side switch), that a recording streams live on
+  `001120A1` byte for byte as the file it becomes, and that the app fetches a
+  recording over BLE as soon as it stops, then sends `APP&STO`.
 - **`wifi-transfer` downloads recordings over WiFi at about 1 MB/s** on
   firmware 1.7 and 1.8 (WiFi firmware V9). It raises the device's access
   point, joins it, requests each recording as a BLE transfer and switches it to
@@ -126,8 +134,8 @@ confirmed it on 1.7.
   `.mp3`, and the remaining files are still tried.
 - `PocketCommander.list_all_recordings()` returns recordings oldest first,
   whatever order the device lists them in, so `download-all`, `wifi-transfer`,
-  `sync`, `watch` and the web UI all go in date order. `PH…` names (phone
-  calls) sort by the time they carry, among the other recordings of their date
+  `sync`, `watch` and the web UI all go in date order. `PH…` names (possibly
+  phone calls) sort by the time they carry, among the other recordings of their date
   (`Recording.sort_key`).
 - `download-all` and `wifi-transfer` print one line for recordings already
   downloaded ("2 recording(s) to download (5 already downloaded)", or "N
