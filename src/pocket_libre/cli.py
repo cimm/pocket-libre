@@ -472,13 +472,29 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
 
     config = ctx.obj["config"]
     device = config.get("device", {}) if isinstance(config.get("device"), dict) else {}
-    if device.get("session_key") and not assume_yes:
+    if (device.get("session_key") or device.get("address")) and not assume_yes:
         click.confirm(f"This replaces the configured device ({device.get('address') or 'no address'}) "
                       "and its session key in the config. Continue?", abort=True)
 
+    # The previous config goes to a backup first: its key may be the only copy
+    # of one the device still expects. Each run gets its own backup, so a
+    # second run can't overwrite the first one's.
+    from datetime import datetime
+
+    previous = cfg.CONFIG_FILE.read_text(encoding="utf-8") if cfg.CONFIG_FILE.exists() else None
+    backup = None
+    if previous is not None:
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = cfg.CONFIG_FILE.with_name(f"{cfg.CONFIG_FILE.name}.{stamp}.bak")
+        backup.write_text(previous, encoding="utf-8")
+        try:
+            backup.chmod(0o600)
+        except OSError:
+            pass
+    kept = f" The previous config is in {backup}." if backup else ""
+
     # Saved before it is sent: once the device takes the key, it refuses any
     # other, so the key must not be lost if this run dies right after.
-    previous = cfg.CONFIG_FILE.read_text(encoding="utf-8") if cfg.CONFIG_FILE.exists() else None
     new_config = {section: dict(values) for section, values in config.items()
                   if isinstance(values, dict)}
     new_config.setdefault("device", {}).update(address=address, session_key=key)
@@ -489,6 +505,8 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
             cfg.CONFIG_FILE.unlink(missing_ok=True)
         else:
             cfg.CONFIG_FILE.write_text(previous, encoding="utf-8")
+        if backup:
+            backup.unlink(missing_ok=True)  # the config itself is the old one again
 
     state = {"sent": False, "paired": None}
 
@@ -498,15 +516,19 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
             state["paired"] = await cmd.login(key)
             return state["paired"]
 
-    async def _check() -> tuple[int, str] | None:
+    async def _check() -> tuple[int, str] | bool | None:
         # The device drops the connection about a second after it takes its
         # first key (the vendor app's first connection times out the same way),
         # so the clock and a check go over a new connection with the new key.
+        # False: the device refused the key it had just taken.
         for _ in range(3):
             await asyncio.sleep(PAIR_RECONNECT_DELAY)
             try:
                 async with PocketCommander(address) as cmd:
-                    if await cmd.authenticate(key):
+                    accepted = await cmd.login(key)
+                    if accepted is False:
+                        return False
+                    if accepted:
                         await cmd.set_time()
                         return await cmd.get_battery(), await cmd.get_firmware()
             except Exception:
@@ -520,29 +542,37 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
             restore()
             console.print(f"[red]Could not connect to {address}: {e}[/red] The config is "
                           "unchanged.")
-        elif state["paired"]:
-            paired = True
-        else:
+            raise SystemExit(1) from None
+        # A refusal is still a refusal when closing the connection fails
+        # afterwards: the device drops the connection right after MCU&SK&ERR.
+        paired = state["paired"]
+        if paired is None:
             console.print(f"[red]The connection failed during pairing: {e}[/red] The device "
                           "may have taken the key, so it stays in the config: check with "
-                          "`pocket-libre status`.")
-        if not state["paired"]:
+                          f"`pocket-libre status`.{kept}")
             raise SystemExit(1) from None
     if paired:
         checked = asyncio.run(_check())
+        if checked is False:
+            console.print(f"[red]The Pocket refused the new key when reconnecting[/red], so "
+                          "the pairing did not hold; the device was probably not freshly "
+                          "reset. The new key stays in the config in case it did: check "
+                          f"with `pocket-libre status`.{kept} To pair, do a hardware reset "
+                          "and run pair again (see `pocket-libre pair --help`).")
+            raise SystemExit(1)
         if checked:
             battery, firmware = checked
             console.print(Panel(
                 f"[bold]Paired[/bold] {address}\n"
                 f"[bold]Battery:[/bold] {battery}%   [bold]Firmware:[/bold] {firmware}\n"
-                f"The session key is saved in {cfg.CONFIG_FILE}.",
+                f"The session key is saved in {cfg.CONFIG_FILE}.{kept}",
                 title="Pocket paired", border_style="green",
             ))
         else:
             console.print(f"[green]Paired[/green] {address}; the session key is saved in "
                           f"{cfg.CONFIG_FILE}. The device did not take a second connection "
                           "yet (it drops the first one after pairing); check with "
-                          "`pocket-libre status`.")
+                          f"`pocket-libre status`.{kept}")
         return
     if paired is False:
         restore()
@@ -553,8 +583,8 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
     if paired is None:
         console.print("[yellow]The Pocket did not answer the pairing request.[/yellow] It may "
                       "have taken the key anyway, so the new key stays in the config: check "
-                      "with `pocket-libre status`, and if that fails, reset the device and "
-                      "run pair again.")
+                      f"with `pocket-libre status`.{kept} If that fails, reset the device "
+                      "and run pair again.")
         raise SystemExit(1)
 
 

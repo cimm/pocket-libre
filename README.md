@@ -122,7 +122,8 @@ pocket-libre pair
 ```
 
 It finds the Pocket, pairs it, and saves its address and the new key to the
-config. The vendor app can't connect to a device paired this way until it is
+config. A config it replaces is kept next to it as
+`config.toml.<date-time>.bak`. The vendor app can't connect to a device paired this way until it is
 reset and paired in the app again (which in turn locks out this key).
 
 ### Getting your session key

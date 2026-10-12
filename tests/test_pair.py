@@ -255,3 +255,95 @@ def test_a_failed_connection_restores_the_config(monkeypatch, config_home):
     assert result.exit_code == 1
     assert device.sent == []
     assert cfg.load_config()["device"] == {"address": "OLD", "session_key": "OLDKEY0000000000"}
+
+
+def test_a_refusal_followed_by_a_failed_disconnect_restores_the_config(monkeypatch, config_home):
+    """The device drops the connection right after MCU&SK&ERR, and closing a
+    dropped connection can raise; the refused key must not replace a working one."""
+    cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
+
+    class DropsAfterRefusing(FakePocket):
+        async def __aexit__(self, *exc):
+            if self.sent and self.sent[-1] != self.key:
+                raise OSError("Not connected")
+            return False
+
+    device = DropsAfterRefusing(key="SOMEONEELSESKEY1")
+    result = _pair(monkeypatch, device, "--yes")
+    assert result.exit_code == 1
+    flat = " ".join(result.output.split())
+    assert "already has a session key" in flat
+    assert cfg.load_config()["device"] == {"address": "OLD", "session_key": "OLDKEY0000000000"}
+    assert list(config_home.parent.glob("*.bak")) == []
+
+
+def test_the_previous_config_is_backed_up_when_the_new_key_stays(monkeypatch, config_home):
+    cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
+    old = config_home.read_text()
+    device = FakePocket(answers=False)
+    result = _pair(monkeypatch, device, "--yes")
+    assert result.exit_code == 1
+    [backup] = config_home.parent.glob("config.toml.*.bak")
+    assert backup.read_text() == old
+    assert backup.stat().st_mode & 0o777 == 0o600
+    assert backup.name in "".join(result.output.split())
+
+
+def test_each_run_keeps_its_own_backup(monkeypatch, config_home):
+    """A second run must not overwrite the backup holding the original key."""
+    cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
+    old = config_home.read_text()
+    stamps = iter(["20261012-100000", "20261012-100005"])
+
+    class Clock:
+        @staticmethod
+        def now():
+            class Stamp:
+                def strftime(self, fmt):
+                    return next(stamps)
+            return Stamp()
+
+    import datetime
+    monkeypatch.setattr(datetime, "datetime", Clock)
+    _pair(monkeypatch, FakePocket(answers=False), "--yes")
+    _pair(monkeypatch, FakePocket(answers=False), "--yes")
+    backups = sorted(config_home.parent.glob("config.toml.*.bak"))
+    assert len(backups) == 2
+    assert backups[0].read_text() == old
+
+
+def test_a_successful_pairing_names_the_backup(monkeypatch, config_home):
+    cfg.save_config({"device": {"address": "OLD", "session_key": "OLDKEY0000000000"}})
+    result = _pair(monkeypatch, FakePocket(), "--yes")
+    assert result.exit_code == 0, result.output
+    [backup] = config_home.parent.glob("config.toml.*.bak")
+    assert "OLDKEY0000000000" in backup.read_text()
+    assert backup.name in "".join(result.output.replace("│", "").split())  # inside a panel
+
+
+def test_a_refused_reconnect_is_a_failed_pairing(monkeypatch, config_home):
+    """MCU&SK&OK, then MCU&SK&ERR for the same key on the next connection:
+    the pairing did not hold."""
+    class Forgets(FakePocket):
+        async def login(self, key):
+            if self.connections > 1:
+                self.sent.append(key)
+                return False
+            return await super().login(key)
+
+    device = Forgets()
+    result = _pair(monkeypatch, device)
+    assert result.exit_code == 1
+    flat = " ".join(result.output.split())
+    assert "refused the new key when reconnecting" in flat and "hardware reset" in flat
+    assert "Pocket paired" not in result.output
+    assert device.connections == 2  # no point retrying a refusal
+
+
+def test_a_configured_address_without_a_key_asks_first(monkeypatch, config_home):
+    cfg.save_config({"device": {"address": "OLD"}})
+    device = FakePocket()
+    result = _pair(monkeypatch, device, input="n\n")
+    assert result.exit_code != 0
+    assert device.sent == []
+    assert cfg.load_config()["device"] == {"address": "OLD"}

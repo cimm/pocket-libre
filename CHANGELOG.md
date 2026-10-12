@@ -18,7 +18,10 @@ confirmed it on 1.7.
   other one (`MCU&SK&ERR`, then a disconnect); confirmed on firmware 1.8.
   `pair` finds the Pocket, sends it a new random key (or `--key`), and saves
   the address and key to the config before sending, so a key the device has
-  taken is never lost. A device that refuses keeps the old config. Also
+  taken is never lost. A device that refuses keeps the old config; otherwise
+  the config it replaces is kept as a timestamped backup. A device that takes
+  the key but refuses it on the next connection is reported as a failed
+  pairing. Also
   `PocketCommander.login()`, which tells `MCU&SK&ERR` from no answer, and
   `commands.generate_session_key()`.
 - PROTOCOL.md documents what an iOS HCI trace of the vendor app showed on
