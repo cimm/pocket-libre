@@ -970,7 +970,7 @@ def sync(ctx, address: str | None, output_dir: str | None, since: str | None,
             if anthropic_key:
                 console.print("  [dim]Summarizing...[/dim]")
                 try:
-                    from pocket_libre.summarize import summarize_transcript
+                    from pocket_libre.summarize import summarize_transcript, summary_stamp
                     summary = summarize_transcript(
                         transcript_text=transcript_text,
                         api_key=anthropic_key,
@@ -978,9 +978,8 @@ def sync(ctx, address: str | None, output_dir: str | None, since: str | None,
                         custom_prompt=prompt,
                     )
                     if summary:
-                        from datetime import datetime
                         summary_path = rec_dir / f"{rec.timestamp}_summary.md"
-                        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        ts = summary_stamp()
                         full_doc = f"# {rec.timestamp} ({ts})\n\n{summary}\n\n---\n\n## Full Transcript\n\n{transcript_text}"
                         summary_path.write_text(full_doc, encoding="utf-8")
                         console.print("  [green]Summary saved[/green]")
@@ -1012,7 +1011,6 @@ def process(ctx, input_path: str, whisper_model: str | None, style: str | None,
             anthropic_key: str | None, hf_token: str | None,
             skip_summary: bool, output: str | None):
     """Process an existing audio file: transcribe, diarize, summarize."""
-    from datetime import datetime
 
     config = ctx.obj["config"]
     whisper_model = whisper_model or get(config, "defaults", "whisper_model", default="base.en")
@@ -1085,7 +1083,7 @@ def process(ctx, input_path: str, whisper_model: str | None, style: str | None,
                 border_style="yellow",
             ))
         else:
-            from pocket_libre.summarize import estimate_cost, summarize_transcript
+            from pocket_libre.summarize import estimate_cost, summarize_transcript, summary_stamp
             est = estimate_cost(transcript_text)
             console.print(f"[dim]Estimated cost: {est}[/dim]")
 
@@ -1097,7 +1095,7 @@ def process(ctx, input_path: str, whisper_model: str | None, style: str | None,
 
             if summary:
                 summary_path = out_dir / f"{stem}_summary.md"
-                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                ts = summary_stamp()
                 full_doc = (
                     f"# {stem} ({ts})\n\n"
                     + summary

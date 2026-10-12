@@ -1,5 +1,7 @@
 """Summarization using Claude Haiku API. ~$0.001 per recording."""
 
+from datetime import datetime
+
 from rich.console import Console
 
 from pocket_libre.pricing import (
@@ -146,3 +148,17 @@ def format_time(seconds: float) -> str:
     m = int(seconds // 60)
     s = int(seconds % 60)
     return f"{m:02d}:{s:02d}"
+
+
+def summary_stamp(now: datetime | None = None) -> str:
+    """When a summary was written, in local time with its UTC offset.
+
+    Recording names are UTC (the device clock is set to UTC), so the offset
+    lets the two be compared: e.g. "2026-10-06 17:05 -06:00" for a recording
+    named 20261006230500.
+    """
+    now = now or datetime.now()
+    if now.tzinfo is None:
+        now = now.astimezone()  # local time, with the machine's offset
+    offset = now.strftime("%z")
+    return f"{now:%Y-%m-%d %H:%M} {offset[:3]}:{offset[3:]}"

@@ -16,6 +16,7 @@ from pocket_libre.summarize import (
     SUMMARY_PROMPTS,
     format_time,
     format_transcript_for_summary,
+    summary_stamp,
 )
 from pocket_libre.transcribe import format_timestamp_srt
 
@@ -28,6 +29,28 @@ from pocket_libre.transcribe import format_timestamp_srt
 )
 def test_format_time(seconds, expected):
     assert format_time(seconds) == expected
+
+
+@pytest.mark.parametrize(
+    "offset_minutes,expected",
+    [
+        (-360, "2026-10-06 17:05 -06:00"),
+        (330, "2026-10-07 04:35 +05:30"),
+        (0, "2026-10-06 23:05 +00:00"),
+    ],
+)
+def test_summary_stamp_shows_local_time_with_its_offset(offset_minutes, expected):
+    """Recording names are UTC; the summary header says which local time it is (#28)."""
+    from datetime import datetime, timedelta, timezone
+
+    utc = datetime(2026, 10, 6, 23, 5, tzinfo=timezone.utc)  # recording 20261006230500
+    now = utc.astimezone(timezone(timedelta(minutes=offset_minutes)))
+    assert summary_stamp(now) == expected
+
+
+def test_summary_stamp_defaults_to_local_time_with_an_offset():
+    stamp = summary_stamp()
+    assert stamp[-6] in "+-" and stamp[-3] == ":"
 
 
 @pytest.mark.parametrize(

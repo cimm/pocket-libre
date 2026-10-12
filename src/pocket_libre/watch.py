@@ -195,15 +195,13 @@ def _process_recording(
     if not anthropic_key:
         return
 
-    from datetime import datetime
-
-    from pocket_libre.summarize import summarize_transcript
+    from pocket_libre.summarize import summarize_transcript, summary_stamp
 
     summary = summarize_transcript(
         transcript_text=transcript_text, api_key=anthropic_key, style=summary_style,
     )
     if summary:
-        stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        stamp = summary_stamp()
         doc = (
             f"# {timestamp} ({stamp})\n\n{summary}\n\n---\n\n"
             f"## Full Transcript\n\n{transcript_text}"
