@@ -32,6 +32,11 @@ from pocket_libre.transcribe import transcribe_audio
 console = Console()
 
 
+def _reason(e: BaseException) -> str:
+    """Why something failed, never empty: a BLE timeout has no message of its own."""
+    return str(e) or type(e).__name__
+
+
 def _require_address(address: str | None, config: dict) -> str:
     """Resolve device address or exit with helpful error."""
     addr = resolve_address(config, address)
@@ -196,7 +201,7 @@ def setup(ctx):
                             console.print("  [yellow]Connected but authentication failed.[/yellow]")
                 asyncio.run(_test())
             except Exception as e:
-                console.print(f"  [yellow]Connection failed: {e}[/yellow]")
+                console.print(f"  [yellow]Connection failed: {_reason(e)}[/yellow]")
                 console.print("  [dim]Make sure the device is awake (press button).[/dim]")
 
     if not new_config["device"].get("session_key"):
@@ -560,14 +565,14 @@ def pair(ctx, address: str | None, session_key: str | None, assume_yes: bool):
     except Exception as e:
         if not state["sent"]:
             restore()
-            console.print(f"[red]Could not connect to {address}: {e}[/red] The config is "
+            console.print(f"[red]Could not connect to {address}: {_reason(e)}[/red] The config is "
                           "unchanged.")
             raise SystemExit(1) from None
         # A refusal is still a refusal when closing the connection fails
         # afterwards: the device drops the connection right after MCU&SK&ERR.
         paired = state["paired"]
         if paired is None:
-            console.print(f"[red]The connection failed during pairing: {e}[/red] The device "
+            console.print(f"[red]The connection failed during pairing: {_reason(e)}[/red] The device "
                           "may have taken the key, so it stays in the config: check with "
                           f"`pocket-libre status`.{kept}")
             raise SystemExit(1) from None

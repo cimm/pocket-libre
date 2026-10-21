@@ -257,6 +257,18 @@ def test_a_failed_connection_restores_the_config(monkeypatch, config_home):
     assert cfg.load_config()["device"] == {"address": "OLD", "session_key": "OLDKEY0000000000"}
 
 
+def test_a_connection_timeout_says_it_timed_out(monkeypatch, config_home):
+    # A BLE timeout carries no message; the error used to end at the colon (#38).
+    class TimesOut(FakePocket):
+        async def __aenter__(self):
+            raise TimeoutError()
+
+    result = _pair(monkeypatch, TimesOut(), "--yes")
+    assert result.exit_code == 1
+    assert "Could not connect to" in result.output
+    assert "TimeoutError" in result.output
+
+
 def test_a_refusal_followed_by_a_failed_disconnect_restores_the_config(monkeypatch, config_home):
     """The device drops the connection right after MCU&SK&ERR, and closing a
     dropped connection can raise; the refused key must not replace a working one."""

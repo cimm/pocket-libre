@@ -6,6 +6,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed connection in `pair` and `setup` now says why. A BLE timeout has
+  no message of its own, so the error used to end at the colon
+  ([#38](https://github.com/shahcolate/pocket-libre/issues/38)).
+
 ## [1.2.0] — 2026-10-12
 
 WiFi transfer works on firmware 1.7 and 1.8. It was decoded from the vendor
