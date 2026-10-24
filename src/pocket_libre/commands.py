@@ -250,6 +250,7 @@ async def _prefer_le_bearer(address: str) -> None:
             process.kill()
             await process.wait()
 
+
 class PocketCommander:
     """Send commands to a Pocket device and collect responses."""
 
