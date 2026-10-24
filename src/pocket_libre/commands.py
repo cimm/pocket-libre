@@ -241,7 +241,7 @@ async def _prefer_le_bearer(address: str) -> None:
             stderr=asyncio.subprocess.DEVNULL,
         )
         await asyncio.wait_for(process.wait(), timeout=6.0)
-    except (FileNotFoundError, OSError, TimeoutError):
+    except (OSError, asyncio.TimeoutError):
         # Bleak can still connect when bluetoothctl is unavailable or the
         # running BlueZ version does not support PreferredBearer.
         pass
