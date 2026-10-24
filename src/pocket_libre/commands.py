@@ -213,6 +213,9 @@ def is_valid_session_key(key: str) -> bool:
     return len(key) == 16 and key.isascii() and key.isalnum()
 
 
+_PREFERRED_BEARER_ADDRESSES: set[str] = set()
+
+
 async def _prefer_le_bearer(address: str) -> None:
     """Tell BlueZ to use its LE bearer instead of trying BR/EDR first.
 
@@ -223,10 +226,14 @@ async def _prefer_le_bearer(address: str) -> None:
     a Bluetooth pairing or encryption key.
 
     This is deliberately best effort: the command is Linux/BlueZ-specific and
-    older BlueZ versions may not expose the preference.
+    older BlueZ versions may not expose the preference. BlueZ keeps the
+    preference, so only attempt it once per address in this process.
     """
     if sys.platform != "linux":
         return
+    if address in _PREFERRED_BEARER_ADDRESSES:
+        return
+    _PREFERRED_BEARER_ADDRESSES.add(address)
 
     process = None
     try:

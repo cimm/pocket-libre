@@ -16,6 +16,8 @@ def cmd():
 @pytest.mark.asyncio
 async def test_prefer_le_bearer_ignores_asyncio_timeout(monkeypatch):
     """A bluetoothctl timeout must not prevent the BLE fallback connection."""
+    calls = 0
+
     class _TimedOutProcess:
         def __init__(self):
             self.returncode = None
@@ -29,14 +31,19 @@ async def test_prefer_le_bearer_ignores_asyncio_timeout(monkeypatch):
             self.returncode = -9
 
     async def create_process(*args, **kwargs):
+        nonlocal calls
+        calls += 1
         return _TimedOutProcess()
 
     monkeypatch.setattr("pocket_libre.commands.sys.platform", "linux")
+    monkeypatch.setattr("pocket_libre.commands._PREFERRED_BEARER_ADDRESSES", set())
     monkeypatch.setattr(
         "pocket_libre.commands.asyncio.create_subprocess_exec", create_process
     )
 
     await _prefer_le_bearer("AA:BB:CC:DD:EE:FF")
+    await _prefer_le_bearer("AA:BB:CC:DD:EE:FF")
+    assert calls == 1
 
 
 # ── Response parsing ────────────────────────────
